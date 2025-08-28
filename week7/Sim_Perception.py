@@ -13,6 +13,7 @@ import numpy as np
 import mujoco
 import imageio
 
+
 # ----------------------------
 # Mujoco XML with camera
 # ----------------------------
@@ -58,7 +59,7 @@ def run_dataset(n_frames=100, out_dir="dataset"):
     model = mujoco.MjModel.from_xml_string(XML)
     data = mujoco.MjData(model)
 
-    # Offscreen render context
+    # Rendering setup
     width, height = 256, 256
     rgb = np.zeros((height, width, 3), dtype=np.uint8)
     depth = np.zeros((height, width), dtype=np.float32)
@@ -66,22 +67,24 @@ def run_dataset(n_frames=100, out_dir="dataset"):
     cam = mujoco.MjvCamera()
     opt = mujoco.MjvOption()
     scn = mujoco.MjvScene(model, maxgeom=2000)
-    con = mujoco.MjrContext(model, mujoco.mjtFontScale.mjFONTSCALE_100.value)
+    con = mujoco.MjrContext(model, mujoco.mjtFontScale.mjFONTSCALE_100)
 
     # Use the named camera
     cam.fixedcamid = mujoco.mj_name2id(model, mujoco.mjtObj.mjOBJ_CAMERA, "fixed_cam")
     cam.type = mujoco.mjtCamera.mjCAMERA_FIXED
 
     frames = []
+    rect = mujoco.MjrRect(0, 0, width, height)
+
     for i in range(n_frames):
         # step sim
         mujoco.mj_step(model, data)
 
         # update scene
-        mujoco.mjv_updateScene(model, data, opt, None, cam, mujoco.mjtCatBit.mjCAT_ALL.value, scn)
-        mujoco.mjr_render(mujoco.MjrRect(0, 0, width, height), scn, con)
+        mujoco.mjv_updateScene(model, data, opt, None, cam, mujoco.mjtCatBit.mjCAT_ALL, scn)
+        mujoco.mjr_render(rect, scn, con)
 
-        mujoco.mjr_readPixels(rgb, depth, mujoco.MjrRect(0, 0, width, height), con)
+        mujoco.mjr_readPixels(rgb, depth, rect, con)
         frame = np.flipud(rgb.copy())  # flip vertical
         frames.append(frame)
 
@@ -97,8 +100,8 @@ def run_dataset(n_frames=100, out_dir="dataset"):
     imageio.mimsave(os.path.join(out_dir, "simulation.gif"), frames, fps=20)
     print(f"Dataset saved in {out_dir}/")
 
+    # free GPU context
     mujoco.mjr_freeContext(con)
-    scn.free()
 
 
 if __name__ == "__main__":
