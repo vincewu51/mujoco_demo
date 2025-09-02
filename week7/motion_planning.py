@@ -1,17 +1,17 @@
 import mujoco
 import mujoco.viewer
 import numpy as np
-import time
 
 # ----------------
-# Load Model (2-link arm + table + object)
+# 2-link arm + table + 2 objects + obstacle
 # ----------------
 model = mujoco.MjModel.from_xml_string("""
 <mujoco>
   <worldbody>
     <geom name="floor" type="plane" size="1 1 0.1" pos="0 0 -0.1" rgba="0.8 0.9 0.8 1"/>
     <geom name="table" type="box" size="0.2 0.2 0.05" pos="0.3 0 0.05" rgba="0.6 0.3 0.2 1"/>
-    
+
+    <!-- Arm -->
     <body name="arm" pos="0 0 0">
       <joint name="joint1" type="hinge" axis="0 0 1" range="-180 180"/>
       <geom type="capsule" fromto="0 0 0 0.2 0 0" size="0.02"/>
@@ -22,19 +22,25 @@ model = mujoco.MjModel.from_xml_string("""
       </body>
     </body>
 
-    <body name="object" pos="0.3 0 0.1">
+    <!-- Objects -->
+    <body name="object1" pos="0.3 0 0.1">
       <freejoint/>
-      <geom name="box" type="box" size="0.02 0.02 0.02" rgba="0.2 0.2 1 1"/>
+      <geom name="box1" type="box" size="0.02 0.02 0.02" rgba="0.2 0.2 1 1"/>
     </body>
+
+    <body name="object2" pos="0.35 0 0.1">
+      <freejoint/>
+      <geom name="box2" type="box" size="0.02 0.02 0.02" rgba="0.2 1 0.2 1"/>
+    </body>
+
+    <!-- Obstacle -->
+    <geom name="obstacle" type="box" size="0.03 0.03 0.05" pos="0.25 0.05 0.05" rgba="1 0 0 1"/>
   </worldbody>
 </mujoco>
 """)
 
 data = mujoco.MjData(model)
 
-# ----------------
-# Helper functions
-# ----------------
 def check_collision(model, data):
     """Return True if collision detected."""
     mujoco.mj_forward(model, data)
@@ -64,9 +70,12 @@ def execute_trajectory(model, data, trajectory, name="Task"):
 
 tasks = [
     ("Reach", np.array([0.0, 0.0]), np.array([np.pi/3, -np.pi/4])),
-    ("Move to object", np.array([np.pi/3, -np.pi/4]), np.array([np.pi/2, -np.pi/2])),
-    ("Lift object", np.array([np.pi/2, -np.pi/2]), np.array([np.pi/2, -np.pi/3])),
-    ("Place on table", np.array([np.pi/2, -np.pi/3]), np.array([np.pi/4, -np.pi/4]))
+    ("Move to object1", np.array([np.pi/3, -np.pi/4]), np.array([np.pi/2, -np.pi/2])),
+    ("Lift object1", np.array([np.pi/2, -np.pi/2]), np.array([np.pi/2, -np.pi/3])),
+    ("Place object1 on table", np.array([np.pi/2, -np.pi/3]), np.array([np.pi/4, -np.pi/4])),
+    ("Avoid obstacle", np.array([np.pi/4, -np.pi/4]), np.array([np.pi/3, -np.pi/6])),
+    ("Pick object1", np.array([np.pi/3, -np.pi/6]), np.array([np.pi/2, -np.pi/2])),
+    ("Stack object1 on object2", np.array([np.pi/2, -np.pi/2]), np.array([np.pi/2, -np.pi/3]))
 ]
 
 for task_name, q_start, q_goal in tasks:
