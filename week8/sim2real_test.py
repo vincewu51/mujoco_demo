@@ -16,14 +16,15 @@ from stable_baselines3.common.callbacks import BaseCallback, EvalCallback
 # MuJoCo low-level API (for forward resets after parameter changes)
 import mujoco
 
+
 # -----------------------------
 # Domain Randomization Wrappers
 # -----------------------------
 @dataclass
 class VisualRandCfg:
     color_jitter_strength: float = 0.5  # 0..1 range per RGBA channel
-    light_pos_jitter: float = 0.5       # meters
-    light_dir_jitter: float = 0.5       # radians-equivalent small vec
+    light_pos_jitter: float = 0.5  # meters
+    light_dir_jitter: float = 0.5  # radians-equivalent small vec
     light_ambient_range: Tuple[float, float] = (0.1, 0.7)
     light_diffuse_range: Tuple[float, float] = (0.3, 1.0)
 
@@ -33,13 +34,20 @@ class VisualRandomizationWrapper(gym.Wrapper):
 
     Effective mostly for image-based observations. Included here for completeness.
     """
-    def __init__(self, env: gym.Env, cfg: VisualRandCfg | None = None, seed: int | None = None):
+
+    def __init__(
+        self, env: gym.Env, cfg: VisualRandCfg | None = None, seed: int | None = None
+    ):
         super().__init__(env)
         self.cfg = cfg or VisualRandCfg()
         self.np_random = np.random.RandomState(seed)
 
     def _rand_rgba(self, base_rgba: np.ndarray) -> np.ndarray:
-        jitter = (self.np_random.rand(*base_rgba.shape) - 0.5) * 2.0 * self.cfg.color_jitter_strength
+        jitter = (
+            (self.np_random.rand(*base_rgba.shape) - 0.5)
+            * 2.0
+            * self.cfg.color_jitter_strength
+        )
         out = np.clip(base_rgba + jitter, 0.0, 1.0)
         # Keep alpha as-is if present and nonzero
         if out.shape[-1] == 4:
@@ -50,7 +58,11 @@ class VisualRandomizationWrapper(gym.Wrapper):
         m = self.unwrapped.model
         d = self.unwrapped.data
         # Geom colors
-        if hasattr(m, "geom_rgba") and m.geom_rgba is not None and m.geom_rgba.shape[0] > 0:
+        if (
+            hasattr(m, "geom_rgba")
+            and m.geom_rgba is not None
+            and m.geom_rgba.shape[0] > 0
+        ):
             # Some envs put 0 in alpha to signal "use texture"; we still jitter RGB
             base = m.geom_rgba.copy()
             jittered = self._rand_rgba(base)
@@ -60,17 +72,25 @@ class VisualRandomizationWrapper(gym.Wrapper):
         if hasattr(m, "nlight") and m.nlight > 0:
             # Positions
             if hasattr(m, "light_pos"):
-                m.light_pos[:] += (self.np_random.randn(m.nlight, 3) * self.cfg.light_pos_jitter)
+                m.light_pos[:] += (
+                    self.np_random.randn(m.nlight, 3) * self.cfg.light_pos_jitter
+                )
             # Directions
             if hasattr(m, "light_dir"):
-                m.light_dir[:] += (self.np_random.randn(m.nlight, 3) * self.cfg.light_dir_jitter)
+                m.light_dir[:] += (
+                    self.np_random.randn(m.nlight, 3) * self.cfg.light_dir_jitter
+                )
             # Ambient & Diffuse
             if hasattr(m, "light_ambient"):
                 low, high = self.cfg.light_ambient_range
-                m.light_ambient[:] = self.np_random.uniform(low, high, size=(m.nlight, 3))
+                m.light_ambient[:] = self.np_random.uniform(
+                    low, high, size=(m.nlight, 3)
+                )
             if hasattr(m, "light_diffuse"):
                 low, high = self.cfg.light_diffuse_range
-                m.light_diffuse[:] = self.np_random.uniform(low, high, size=(m.nlight, 3))
+                m.light_diffuse[:] = self.np_random.uniform(
+                    low, high, size=(m.nlight, 3)
+                )
 
         mujoco.mj_forward(m, d)
 
@@ -94,7 +114,10 @@ class PhysicsRandCfg:
 
 class PhysicsRandomizationWrapper(gym.Wrapper):
     """Randomize physics parameters each reset for robustness training."""
-    def __init__(self, env: gym.Env, cfg: PhysicsRandCfg | None = None, seed: int | None = None):
+
+    def __init__(
+        self, env: gym.Env, cfg: PhysicsRandCfg | None = None, seed: int | None = None
+    ):
         super().__init__(env)
         self.cfg = cfg or PhysicsRandCfg()
         self.np_random = np.random.RandomState(seed)
@@ -104,13 +127,19 @@ class PhysicsRandomizationWrapper(gym.Wrapper):
         m = self.unwrapped.model
         if self._ref is None:
             self._ref = dict(
-                geom_friction=m.geom_friction.copy() if hasattr(m, "geom_friction") else None,
+                geom_friction=(
+                    m.geom_friction.copy() if hasattr(m, "geom_friction") else None
+                ),
                 dof_damping=m.dof_damping.copy() if hasattr(m, "dof_damping") else None,
                 body_mass=m.body_mass.copy() if hasattr(m, "body_mass") else None,
-                actuator_gear=m.actuator_gear.copy() if hasattr(m, "actuator_gear") else None,
+                actuator_gear=(
+                    m.actuator_gear.copy() if hasattr(m, "actuator_gear") else None
+                ),
             )
 
-    def _apply_scales(self, fric_scale: float, damp_scale: float, mass_scale: float, gear_scale: float):
+    def _apply_scales(
+        self, fric_scale: float, damp_scale: float, mass_scale: float, gear_scale: float
+    ):
         m = self.unwrapped.model
         d = self.unwrapped.data
         if self._ref is None:
@@ -135,7 +164,9 @@ class PhysicsRandomizationWrapper(gym.Wrapper):
         fric_scale = rs(self.cfg.friction_range[0], self.cfg.friction_range[1])
         damp_scale = rs(self.cfg.damping_range[0], self.cfg.damping_range[1])
         mass_scale = rs(self.cfg.mass_range[0], self.cfg.mass_range[1])
-        gear_scale = rs(self.cfg.actuator_strength_range[0], self.cfg.actuator_strength_range[1])
+        gear_scale = rs(
+            self.cfg.actuator_strength_range[0], self.cfg.actuator_strength_range[1]
+        )
         self._apply_scales(fric_scale, damp_scale, mass_scale, gear_scale)
 
     def reset(self, **kwargs):
@@ -169,10 +200,14 @@ class DeterministicPerturbationWrapper(gym.Wrapper):
         m = self.unwrapped.model
         if self._ref is None:
             self._ref = dict(
-                geom_friction=m.geom_friction.copy() if hasattr(m, "geom_friction") else None,
+                geom_friction=(
+                    m.geom_friction.copy() if hasattr(m, "geom_friction") else None
+                ),
                 dof_damping=m.dof_damping.copy() if hasattr(m, "dof_damping") else None,
                 body_mass=m.body_mass.copy() if hasattr(m, "body_mass") else None,
-                actuator_gear=m.actuator_gear.copy() if hasattr(m, "actuator_gear") else None,
+                actuator_gear=(
+                    m.actuator_gear.copy() if hasattr(m, "actuator_gear") else None
+                ),
             )
 
     def _apply(self):
@@ -182,13 +217,21 @@ class DeterministicPerturbationWrapper(gym.Wrapper):
         if ref is None:
             return
         if ref.get("geom_friction") is not None and hasattr(m, "geom_friction"):
-            m.geom_friction[:] = np.clip(ref["geom_friction"] * self.perturb.friction_scale, 0.0, None)
+            m.geom_friction[:] = np.clip(
+                ref["geom_friction"] * self.perturb.friction_scale, 0.0, None
+            )
         if ref.get("dof_damping") is not None and hasattr(m, "dof_damping"):
-            m.dof_damping[:] = np.clip(ref["dof_damping"] * self.perturb.damping_scale, 0.0, None)
+            m.dof_damping[:] = np.clip(
+                ref["dof_damping"] * self.perturb.damping_scale, 0.0, None
+            )
         if ref.get("body_mass") is not None and hasattr(m, "body_mass"):
-            m.body_mass[:] = np.clip(ref["body_mass"] * self.perturb.mass_scale, 1e-6, None)
+            m.body_mass[:] = np.clip(
+                ref["body_mass"] * self.perturb.mass_scale, 1e-6, None
+            )
         if ref.get("actuator_gear") is not None and hasattr(m, "actuator_gear"):
-            m.actuator_gear[:] = ref["actuator_gear"] * self.perturb.actuator_strength_scale
+            m.actuator_gear[:] = (
+                ref["actuator_gear"] * self.perturb.actuator_strength_scale
+            )
         mujoco.mj_forward(m, d)
 
     def reset(self, **kwargs):
@@ -205,10 +248,10 @@ class DeterministicPerturbationWrapper(gym.Wrapper):
 # Utilities
 # -----------------------------
 
-def make_env(env_id: str,
-             seed: int,
-             train_visual_rand: bool,
-             train_physics_rand: bool) -> gym.Env:
+
+def make_env(
+    env_id: str, seed: int, train_visual_rand: bool, train_physics_rand: bool
+) -> gym.Env:
     env = gym.make(env_id)
     env.reset(seed=seed)
     if train_visual_rand:
@@ -218,11 +261,13 @@ def make_env(env_id: str,
     return env
 
 
-def evaluate(model: PPO,
-             env_id: str,
-             perturb: Perturbation,
-             episodes: int = 10,
-             seed: int | None = None) -> float:
+def evaluate(
+    model: PPO,
+    env_id: str,
+    perturb: Perturbation,
+    episodes: int = 10,
+    seed: int | None = None,
+) -> float:
     env = gym.make(env_id)
     env = DeterministicPerturbationWrapper(env, perturb)
     if seed is not None:
@@ -258,18 +303,27 @@ class TrainingLogger(BaseCallback):
 # Main
 # -----------------------------
 
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--env-id", type=str, default="Hopper-v4",
-                        help="Gymnasium MuJoCo env id, e.g. Hopper-v4, HalfCheetah-v4, Ant-v4")
+    parser.add_argument(
+        "--env-id",
+        type=str,
+        default="Hopper-v4",
+        help="Gymnasium MuJoCo env id, e.g. Hopper-v4, HalfCheetah-v4, Ant-v4",
+    )
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--total-timesteps", type=int, default=300_000)
     parser.add_argument("--train-visual-rand", type=int, default=1)
     parser.add_argument("--train-physics-rand", type=int, default=1)
     parser.add_argument("--eval-episodes", type=int, default=10)
     parser.add_argument("--save-path", type=str, default="./ppo_model")
-    parser.add_argument("--load-path", type=str, default="",
-                        help="If provided, loads an existing model from this path (zip)")
+    parser.add_argument(
+        "--load-path",
+        type=str,
+        default="",
+        help="If provided, loads an existing model from this path (zip)",
+    )
     parser.add_argument("--eval-only", type=int, default=0)
 
     args = parser.parse_args()
@@ -307,7 +361,11 @@ def main():
     if not args.eval_only:
         print("\n==> Training with domain randomization...")
         model.learn(total_timesteps=args.total_timesteps, callback=TrainingLogger())
-        save_path = args.save_path if args.save_path.endswith(".zip") else (args.save_path + ".zip")
+        save_path = (
+            args.save_path
+            if args.save_path.endswith(".zip")
+            else (args.save_path + ".zip")
+        )
         model.save(save_path)
         print(f"Model saved to: {save_path}")
 
@@ -343,7 +401,9 @@ def main():
                         seed=args.seed,
                     )
                     rows.append([fric, damp, mass, act, ret])
-                    print(f"scales (f={fric:.1f}, d={damp:.1f}, m={mass:.1f}, a={act:.1f}) -> return {ret:.1f}")
+                    print(
+                        f"scales (f={fric:.1f}, d={damp:.1f}, m={mass:.1f}, a={act:.1f}) -> return {ret:.1f}"
+                    )
 
     arr = np.array(rows)
     best_idx = int(np.argmax(arr[:, -1]))
